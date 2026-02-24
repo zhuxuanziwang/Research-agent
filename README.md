@@ -85,6 +85,16 @@ python -m research_agent.server --host 127.0.0.1 --port 8787
 Open `http://127.0.0.1:8787`.
 The CLI and web server automatically load variables from `.env` if present.
 
+## Realtime Run Status
+
+The web UI uses async run APIs for live progress:
+
+- `POST /api/run`: enqueue a run, returns `{run_id, status}`
+- `GET /api/runs/{run_id}`: poll status/progress/compact trace/result
+- `POST /api/run-sync`: optional blocking run for scripts
+
+Progress stages include `planning`, `planned`, `step_started`, `step_finished`, `replanned`, `summarizing`, `completed`, and `failed`.
+
 ## What the Agent Does
 
 For each query, the agent:

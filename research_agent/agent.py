@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from research_agent.config import Settings
 from research_agent.dataset import build_chunks, load_papers
@@ -77,24 +77,61 @@ class ResearchPaperAgent:
             self.last_primary_paper = hits[0]["paper_id"]
         return observation
 
-    def run(self, query: str, include_full_trace: bool = False) -> dict[str, Any]:
+    def run(
+        self,
+        query: str,
+        include_full_trace: bool = False,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        def emit(event: dict[str, Any]) -> None:
+            if progress_callback is not None:
+                progress_callback(event)
+
+        emit({"stage": "planning"})
         plan = self.grok.plan(
             query=query,
             memory=self.memory.snapshot(),
             tools=self.tools.describe(),
         )
         steps = list(plan.get("steps", []))
+        emit(
+            {
+                "stage": "planned",
+                "total_steps": len(steps),
+                "plan_steps": [
+                    {
+                        "step_id": step.get("id"),
+                        "sub_question": step.get("sub_question"),
+                        "tool": step.get("tool"),
+                    }
+                    for step in steps
+                ],
+            }
+        )
         self.memory.add_event("planner", json.dumps(plan, ensure_ascii=False))
 
         execution_trace: list[dict[str, Any]] = []
         full_trace: list[dict[str, Any]] = []
         pooled_hits: dict[str, dict[str, Any]] = {}
+        executed_count = 0
+        expected_total_steps = len(steps)
 
         for _ in range(self.settings.max_iterations):
             if not steps:
                 break
 
             step = steps.pop(0)
+            executed_count += 1
+            emit(
+                {
+                    "stage": "step_started",
+                    "step_index": executed_count,
+                    "total_steps": expected_total_steps,
+                    "step_id": step.get("id"),
+                    "sub_question": step.get("sub_question"),
+                    "tool": step.get("tool"),
+                }
+            )
             observation = self._run_step(step)
 
             for hit in observation.get("hits", []):
@@ -133,18 +170,42 @@ class ResearchPaperAgent:
                 },
             }
             execution_trace.append(compact)
+            emit(
+                {
+                    "stage": "step_finished",
+                    "step_index": executed_count,
+                    "total_steps": expected_total_steps,
+                    "trace_entry": compact,
+                }
+            )
             if include_full_trace:
                 full_trace.append(
                     {"step": step, "observation": observation, "reflection": reflection}
                 )
             if reflection.get("replan") and reflection.get("new_steps"):
-                steps = list(reflection["new_steps"]) + steps
+                new_steps = list(reflection["new_steps"])
+                steps = new_steps + steps
+                expected_total_steps += len(new_steps)
+                emit(
+                    {
+                        "stage": "replanned",
+                        "added_steps": len(new_steps),
+                        "total_steps": expected_total_steps,
+                    }
+                )
 
         evidence = sorted(
             pooled_hits.values(),
             key=lambda item: (item["hybrid_score"], item["year"]),
             reverse=True,
         )[:8]
+        emit(
+            {
+                "stage": "summarizing",
+                "evidence_count": len(evidence),
+                "executed_steps": executed_count,
+            }
+        )
         final_summary = self.grok.summarize(
             query=query, memory=self.memory.snapshot(), evidence=evidence
         )
@@ -162,4 +223,11 @@ class ResearchPaperAgent:
         }
         if include_full_trace:
             result["full_trace"] = full_trace
+        emit(
+            {
+                "stage": "done",
+                "executed_steps": executed_count,
+                "total_steps": expected_total_steps,
+            }
+        )
         return result

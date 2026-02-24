@@ -14,6 +14,8 @@ const riskList = document.getElementById("riskList");
 const traceList = document.getElementById("traceList");
 const ingestResult = document.getElementById("ingestResult");
 const traceTemplate = document.getElementById("traceTemplate");
+let activeRunId = "";
+let pollTimer = null;
 
 function setStatus(text) {
   healthBadge.textContent = text;
@@ -67,6 +69,77 @@ function listRender(container, items, emptyText) {
   });
 }
 
+function resetRunButton() {
+  runBtn.disabled = false;
+  runBtn.textContent = "Run Workflow";
+}
+
+function renderTraceList(trace) {
+  traceList.innerHTML = "";
+  (trace || []).forEach((entry, idx) => {
+    const node = traceTemplate.content.cloneNode(true);
+    node.querySelector("h3").textContent = `Step ${idx + 1}: ${entry.sub_question || ""}`;
+    node.querySelector(".pill").textContent = entry.tool || "unknown";
+    node.querySelector("pre").textContent = formatTrace(entry);
+    traceList.appendChild(node);
+  });
+}
+
+function renderFinalResult(result, runId) {
+  const header = `Run: ${runId} | Mode: ${result.mode || "unknown"} | Papers: ${result.paper_count ?? "?"} | Data: ${result.data_path || "?"}`;
+  const answer = result.summary?.answer || "No summary returned.";
+  answerBlock.textContent = `${header}\n\n${answer}`;
+  listRender(evidenceList, result.summary?.evidence_points || [], "No evidence.");
+  listRender(riskList, result.summary?.risks || [], "No risks.");
+  renderTraceList(result.execution_trace || []);
+}
+
+function schedulePoll(runId) {
+  pollTimer = setTimeout(() => {
+    pollRun(runId);
+  }, 1000);
+}
+
+async function pollRun(runId) {
+  if (activeRunId !== runId) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/runs/${runId}`);
+    const run = await response.json();
+    if (!response.ok) {
+      answerBlock.textContent = run.error || `Failed to fetch run status: ${runId}`;
+      activeRunId = "";
+      resetRunButton();
+      return;
+    }
+
+    const progress = run.progress || {};
+    const stepIndex = progress.step_index ?? 0;
+    const totalSteps = progress.total_steps ?? 0;
+    answerBlock.textContent = `Run: ${runId}\nStatus: ${run.status}\nStage: ${progress.stage || "unknown"}\nStep: ${stepIndex}/${totalSteps}\n${progress.message || ""}`;
+    renderTraceList(run.execution_trace || []);
+
+    if (run.status === "completed" && run.result) {
+      renderFinalResult(run.result, runId);
+      activeRunId = "";
+      resetRunButton();
+      return;
+    }
+    if (run.status === "failed") {
+      answerBlock.textContent = `Run: ${runId}\nStatus: failed\n${run.error || "Unknown error."}`;
+      activeRunId = "";
+      resetRunButton();
+      return;
+    }
+    schedulePoll(runId);
+  } catch (err) {
+    answerBlock.textContent = `Run status polling failed: ${err}`;
+    activeRunId = "";
+    resetRunButton();
+  }
+}
+
 async function checkHealth() {
   try {
     const response = await fetch("/api/health");
@@ -85,8 +158,10 @@ async function runAgent() {
   }
   runBtn.disabled = true;
   runBtn.textContent = "Running...";
-  answerBlock.textContent = "Executing multi-step workflow...";
+  answerBlock.textContent = "Submitting run...";
   traceList.innerHTML = "";
+  evidenceList.innerHTML = "";
+  riskList.innerHTML = "";
 
   try {
     const response = await fetch("/api/run", {
@@ -98,29 +173,21 @@ async function runAgent() {
       }),
     });
     const data = await response.json();
-    if (!response.ok) {
+    if (!response.ok || !data.run_id) {
       answerBlock.textContent = data.error || "Run failed.";
+      resetRunButton();
       return;
     }
-
-    const header = `Mode: ${data.mode || "unknown"} | Papers: ${data.paper_count ?? "?"} | Data: ${data.data_path || "?"}`;
-    const answer = data.summary?.answer || "No summary returned.";
-    answerBlock.textContent = `${header}\n\n${answer}`;
-    listRender(evidenceList, data.summary?.evidence_points || [], "No evidence.");
-    listRender(riskList, data.summary?.risks || [], "No risks.");
-
-    (data.execution_trace || []).forEach((entry, idx) => {
-      const node = traceTemplate.content.cloneNode(true);
-      node.querySelector("h3").textContent = `Step ${idx + 1}: ${entry.sub_question || ""}`;
-      node.querySelector(".pill").textContent = entry.tool || "unknown";
-      node.querySelector("pre").textContent = formatTrace(entry);
-      traceList.appendChild(node);
-    });
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+    activeRunId = data.run_id;
+    answerBlock.textContent = `Run submitted: ${data.run_id}\nWaiting for planner...`;
+    schedulePoll(data.run_id);
   } catch (err) {
     answerBlock.textContent = `Run failed: ${err}`;
-  } finally {
-    runBtn.disabled = false;
-    runBtn.textContent = "Run Workflow";
+    resetRunButton();
   }
 }
 
