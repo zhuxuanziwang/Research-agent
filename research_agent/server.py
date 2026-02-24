@@ -36,6 +36,7 @@ def create_handler(project_root: Path, default_data_path: Path) -> type[SimpleHT
                     self,
                     {
                         "status": "ok",
+                        "mode": "live_only",
                         "default_data_path": str(default_data_path),
                     },
                 )
@@ -87,7 +88,10 @@ def create_handler(project_root: Path, default_data_path: Path) -> type[SimpleHT
 
             try:
                 agent = ResearchPaperAgent(data_path=data_path)
-                result = agent.run(query)
+                result = agent.run(
+                    query,
+                    include_full_trace=bool(payload.get("include_full_trace", False)),
+                )
             except Exception as exc:  # pragma: no cover - runtime guard
                 _json_response(self, {"error": f"agent failed: {exc}"}, status=500)
                 return
@@ -145,7 +149,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run Research Agent web server.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
-    parser.add_argument("--data", default="data/mock_papers.json")
+    parser.add_argument("--data", default="data/real_papers.json")
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parents[1]
@@ -166,4 +170,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

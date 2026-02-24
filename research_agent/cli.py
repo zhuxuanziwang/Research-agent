@@ -20,18 +20,23 @@ def main() -> None:
     )
     parser.add_argument(
         "--data",
-        default="data/mock_papers.json",
-        help="Path to mock paper dataset JSON",
+        default="data/real_papers.json",
+        help="Path to real paper dataset JSON",
     )
     parser.add_argument(
         "--json",
         action="store_true",
         help="Output full JSON result",
     )
+    parser.add_argument(
+        "--full-trace",
+        action="store_true",
+        help="Include full tool observations (can be large).",
+    )
     args = parser.parse_args()
 
     agent = ResearchPaperAgent(data_path=Path(args.data))
-    result = agent.run(args.query)
+    result = agent.run(args.query, include_full_trace=args.full_trace)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

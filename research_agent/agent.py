@@ -13,7 +13,12 @@ from research_agent.tools import ToolExecutor
 
 
 class ResearchPaperAgent:
-    def __init__(self, data_path: str | Path, settings: Settings | None = None):
+    def __init__(
+        self,
+        data_path: str | Path,
+        settings: Settings | None = None,
+        grok_client: GrokClient | None = None,
+    ):
         self.settings = settings or Settings.from_env()
         self.data_path = Path(data_path)
         self.papers = load_papers(self.data_path)
@@ -23,8 +28,38 @@ class ResearchPaperAgent:
         )
         self.tools = ToolExecutor(self.retriever, self.papers)
         self.memory = ContextMemory(max_events=self.settings.memory_window)
-        self.grok = GrokClient(self.settings)
+        self.grok = grok_client or GrokClient(self.settings)
         self.last_primary_paper: str | None = None
+
+    def _compact_observation(self, observation: dict[str, Any]) -> dict[str, Any]:
+        summary: dict[str, Any] = {
+            "tool": observation.get("tool"),
+            "ambiguity": observation.get("ambiguity", {}),
+            "citation_count": len(observation.get("citations", [])),
+        }
+        hits = observation.get("hits", [])
+        if isinstance(hits, list):
+            top_hits: list[dict[str, Any]] = []
+            for item in hits[:3]:
+                top_hits.append(
+                    {
+                        "paper_id": item.get("paper_id"),
+                        "title": item.get("title"),
+                        "year": item.get("year"),
+                        "section": item.get("section"),
+                        "hybrid_score": round(float(item.get("hybrid_score", 0.0)), 4),
+                    }
+                )
+            summary["hit_count"] = len(hits)
+            summary["top_hits"] = top_hits
+        if observation.get("tool") == "citation_graph":
+            summary["graph"] = {
+                "paper_id": observation.get("paper_id"),
+                "title": observation.get("title"),
+                "outgoing_count": len(observation.get("outgoing", [])),
+                "incoming_count": len(observation.get("incoming", [])),
+            }
+        return summary
 
     def _run_step(self, step: dict[str, Any]) -> dict[str, Any]:
         tool = step.get("tool", "hybrid_search")
@@ -42,7 +77,7 @@ class ResearchPaperAgent:
             self.last_primary_paper = hits[0]["paper_id"]
         return observation
 
-    def run(self, query: str) -> dict[str, Any]:
+    def run(self, query: str, include_full_trace: bool = False) -> dict[str, Any]:
         plan = self.grok.plan(
             query=query,
             memory=self.memory.snapshot(),
@@ -52,6 +87,7 @@ class ResearchPaperAgent:
         self.memory.add_event("planner", json.dumps(plan, ensure_ascii=False))
 
         execution_trace: list[dict[str, Any]] = []
+        full_trace: list[dict[str, Any]] = []
         pooled_hits: dict[str, dict[str, Any]] = {}
 
         for _ in range(self.settings.max_iterations):
@@ -85,9 +121,22 @@ class ResearchPaperAgent:
             )
             self.memory.add_event("reflect", json.dumps(reflection, ensure_ascii=False))
 
-            execution_trace.append(
-                {"step": step, "observation": observation, "reflection": reflection}
-            )
+            compact = {
+                "step_id": step.get("id"),
+                "sub_question": step.get("sub_question"),
+                "tool": step.get("tool"),
+                "observation_summary": self._compact_observation(observation),
+                "reflection": {
+                    "replan": bool(reflection.get("replan")),
+                    "reason": reflection.get("reason", ""),
+                    "new_steps_count": len(reflection.get("new_steps", [])),
+                },
+            }
+            execution_trace.append(compact)
+            if include_full_trace:
+                full_trace.append(
+                    {"step": step, "observation": observation, "reflection": reflection}
+                )
             if reflection.get("replan") and reflection.get("new_steps"):
                 steps = list(reflection["new_steps"]) + steps
 
@@ -100,13 +149,17 @@ class ResearchPaperAgent:
             query=query, memory=self.memory.snapshot(), evidence=evidence
         )
 
-        return {
+        result = {
             "query": query,
-            "mode": "mock" if self.settings.grok_mock else "live",
+            "mode": "live",
+            "data_path": str(self.data_path),
+            "paper_count": len(self.papers),
             "plan": plan,
             "execution_trace": execution_trace,
             "summary": final_summary,
             "citations": self.memory.top_citations(limit=8),
             "evidence": evidence,
         }
-
+        if include_full_trace:
+            result["full_trace"] = full_trace
+        return result

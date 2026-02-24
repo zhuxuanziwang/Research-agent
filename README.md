@@ -2,35 +2,39 @@
 
 Autonomous multi-step research-paper agentic workflow using Grok as the central reasoner.
 
-This prototype is built for the `research paper` track and includes:
+This version is **live-only** (no mock reasoning fallback).  
+If Grok API fails, the run returns a clear error instead of synthetic output.
+
+Core capabilities:
 
 - Iterative loop: `plan -> decompose -> tool select -> analyze -> refine/replan -> summarize`
-- Grok-driven planning, reflection, and synthesis (with offline mock mode fallback)
-- Hybrid retrieval (`semantic + keyword`) over structured mock paper excerpts
+- Grok-driven planning, reflection, and synthesis
+- Hybrid retrieval (`semantic + keyword`) over structured paper sections
 - Context memory with compression and citation tracking
 - Ambiguity resilience via automatic replanning triggers
+- Compact trace visualization: each step shows summary stats/top hits/replan signal, not full chunk text
 
 ## Project Structure
 
 ```text
 research_agent/
   agent.py         # Main autonomous loop
-  grok.py          # Grok integration (live + mock)
+  grok.py          # Live Grok integration (strict JSON contracts)
   tools.py         # Tool execution (hybrid search/timeline/citation graph)
   retrieval.py     # Hybrid retrieval engine
   memory.py        # Context management and compression
-  dataset.py       # Mock paper loading/chunking
+  dataset.py       # Paper dataset loading/chunking
   pdf_ingest.py    # PDF -> structured dataset conversion
   server.py        # Web API + frontend static server
   config.py        # Environment configuration
 data/
-  mock_papers.json # High-quality mock research paper dataset
+  real_papers.json # Real paper dataset generated from PDFs
+  sample_papers.json # Small sample dataset for local tests
 frontend/
   index.html       # Web console
   app.js           # Frontend logic
   styles.css       # Visual design
 scripts/
-  generate_mock_papers.py
   pdf_to_dataset.py
 tests/
   test_retrieval.py
@@ -39,48 +43,46 @@ tests/
 
 ## Quick Start
 
-1. Run the agent in mock Grok mode:
+1. Configure `.env`:
 
 ```bash
-python -m research_agent.cli \
-  --query "How reliable is hybrid retrieval for multilingual literature reviews?"
+GROK_API_KEY=your_key
+GROK_BASE_URL=https://api.x.ai/v1/chat/completions
+GROK_MODEL=grok-2-latest
 ```
 
-2. Get full JSON trace:
+2. Run the agent:
 
 ```bash
 python -m research_agent.cli \
   --query "What causes citation hallucination in review agents?" \
+  --data data/real_papers.json \
   --json
 ```
 
-3. Run tests:
+3. Optional full trace (large):
+
+```bash
+python -m research_agent.cli \
+  --query "..." \
+  --data data/real_papers.json \
+  --json \
+  --full-trace
+```
+
+4. Run tests:
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-4. Run web frontend:
+5. Run web frontend:
 
 ```bash
 python -m research_agent.server --host 127.0.0.1 --port 8787
 ```
 
 Open `http://127.0.0.1:8787`.
-
-## Optional Live Grok Mode
-
-Set environment variables:
-
-```bash
-export GROK_API_KEY="your_key"
-export GROK_BASE_URL="https://api.x.ai/v1/chat/completions"
-export GROK_MODEL="grok-2-latest"
-export GROK_MOCK=false
-```
-
-Then run the same CLI command. If API configuration is missing, the system falls back to deterministic mock reasoning.
-
 The CLI and web server automatically load variables from `.env` if present.
 
 ## What the Agent Does
@@ -96,17 +98,7 @@ For each query, the agent:
 5. Automatically inserts replanning steps when ambiguity is detected.
 6. Produces a grounded final synthesis with citations and risks.
 
-## Mock Dataset Characteristics
-
-`data/mock_papers.json` includes 10 papers with:
-
-- multilingual entries (`en`, `zh`, `es`)
-- conflicting claims (support/challenge/mixed stances)
-- citation links for graph inspection
-- realistic sections: abstract, methodology, findings, limitations
-- edge cases: benchmark leakage, PDF parsing noise, context compression failures
-
-## Real PDF Data Workflow
+## Real PDF Workflow
 
 Convert a folder of PDFs into agent-ready dataset JSON:
 
@@ -137,3 +129,4 @@ python scripts/pdf_to_dataset.py \
 Notes:
 - PDF extraction tries `pypdf` first, then `pdftotext`.
 - Install `pypdf` if needed: `pip install pypdf`.
+- For the UI/API, `execution_trace` is compact by default. Full raw observations are only returned when `include_full_trace=true`.

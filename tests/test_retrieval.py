@@ -9,7 +9,7 @@ from research_agent.retrieval import HybridRetriever
 
 class RetrievalTests(unittest.TestCase):
     def test_hybrid_search_returns_ranked_hits(self) -> None:
-        papers = load_papers(Path("data/mock_papers.json"))
+        papers = load_papers(Path("data/sample_papers.json"))
         chunks = build_chunks(papers)
         retriever = HybridRetriever(chunks)
 

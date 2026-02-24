@@ -19,6 +19,37 @@ function setStatus(text) {
   healthBadge.textContent = text;
 }
 
+function formatTrace(entry) {
+  const lines = [];
+  const summary = entry.observation_summary || {};
+  const topHits = summary.top_hits || [];
+  const hitLabel = typeof summary.hit_count === "number" ? summary.hit_count : 0;
+  lines.push(`Hits: ${hitLabel}`);
+  if (topHits.length > 0) {
+    const hitText = topHits
+      .map(
+        (hit) =>
+          `[${hit.paper_id}] ${hit.title} (${hit.year}) · ${hit.section} · score=${hit.hybrid_score}`
+      )
+      .join("\n");
+    lines.push(`Top Matches:\n${hitText}`);
+  }
+  const ambiguity = summary.ambiguity || {};
+  if (Object.keys(ambiguity).length > 0) {
+    lines.push(
+      `Ambiguity: low_coverage=${Boolean(ambiguity.low_coverage)}, conflicting=${Boolean(ambiguity.conflicting_stances)}`
+    );
+  }
+  const reflection = entry.reflection || {};
+  lines.push(
+    `Replan: ${Boolean(reflection.replan)} · new_steps=${reflection.new_steps_count || 0}`
+  );
+  if (reflection.reason) {
+    lines.push(`Reason: ${reflection.reason}`);
+  }
+  return lines.join("\n\n");
+}
+
 function listRender(container, items, emptyText) {
   container.innerHTML = "";
   if (!items || items.length === 0) {
@@ -40,7 +71,7 @@ async function checkHealth() {
   try {
     const response = await fetch("/api/health");
     const data = await response.json();
-    setStatus(`Service OK · default data: ${data.default_data_path}`);
+    setStatus(`Service OK (${data.mode || "unknown"}) · default data: ${data.default_data_path}`);
   } catch (err) {
     setStatus("Service unavailable");
   }
@@ -63,7 +94,7 @@ async function runAgent() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query,
-        data_path: dataPathInput.value.trim() || "data/mock_papers.json",
+        data_path: dataPathInput.value.trim() || "data/real_papers.json",
       }),
     });
     const data = await response.json();
@@ -72,22 +103,17 @@ async function runAgent() {
       return;
     }
 
-    answerBlock.textContent = data.summary?.answer || "No summary returned.";
+    const header = `Mode: ${data.mode || "unknown"} | Papers: ${data.paper_count ?? "?"} | Data: ${data.data_path || "?"}`;
+    const answer = data.summary?.answer || "No summary returned.";
+    answerBlock.textContent = `${header}\n\n${answer}`;
     listRender(evidenceList, data.summary?.evidence_points || [], "No evidence.");
     listRender(riskList, data.summary?.risks || [], "No risks.");
 
     (data.execution_trace || []).forEach((entry, idx) => {
       const node = traceTemplate.content.cloneNode(true);
-      node.querySelector("h3").textContent = `Step ${idx + 1}: ${entry.step?.sub_question || ""}`;
-      node.querySelector(".pill").textContent = entry.step?.tool || "unknown";
-      node.querySelector("pre").textContent = JSON.stringify(
-        {
-          observation: entry.observation,
-          reflection: entry.reflection,
-        },
-        null,
-        2
-      );
+      node.querySelector("h3").textContent = `Step ${idx + 1}: ${entry.sub_question || ""}`;
+      node.querySelector(".pill").textContent = entry.tool || "unknown";
+      node.querySelector("pre").textContent = formatTrace(entry);
       traceList.appendChild(node);
     });
   } catch (err) {
@@ -134,4 +160,3 @@ async function ingestPdfs() {
 runBtn.addEventListener("click", runAgent);
 ingestBtn.addEventListener("click", ingestPdfs);
 checkHealth();
-
