@@ -20,11 +20,18 @@ research_agent/
   retrieval.py     # Hybrid retrieval engine
   memory.py        # Context management and compression
   dataset.py       # Mock paper loading/chunking
+  pdf_ingest.py    # PDF -> structured dataset conversion
+  server.py        # Web API + frontend static server
   config.py        # Environment configuration
 data/
   mock_papers.json # High-quality mock research paper dataset
+frontend/
+  index.html       # Web console
+  app.js           # Frontend logic
+  styles.css       # Visual design
 scripts/
   generate_mock_papers.py
+  pdf_to_dataset.py
 tests/
   test_retrieval.py
   test_agent.py
@@ -53,6 +60,14 @@ python -m research_agent.cli \
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
+4. Run web frontend:
+
+```bash
+python -m research_agent.server --host 127.0.0.1 --port 8787
+```
+
+Open `http://127.0.0.1:8787`.
+
 ## Optional Live Grok Mode
 
 Set environment variables:
@@ -65,6 +80,8 @@ export GROK_MOCK=false
 ```
 
 Then run the same CLI command. If API configuration is missing, the system falls back to deterministic mock reasoning.
+
+The CLI and web server automatically load variables from `.env` if present.
 
 ## What the Agent Does
 
@@ -88,3 +105,35 @@ For each query, the agent:
 - citation links for graph inspection
 - realistic sections: abstract, methodology, findings, limitations
 - edge cases: benchmark leakage, PDF parsing noise, context compression failures
+
+## Real PDF Data Workflow
+
+Convert a folder of PDFs into agent-ready dataset JSON:
+
+```bash
+python scripts/pdf_to_dataset.py \
+  --pdf-dir data/pdfs \
+  --out data/real_papers.json
+```
+
+Then run the agent on real dataset:
+
+```bash
+python -m research_agent.cli \
+  --query "What are the dominant failure modes in citation-grounded review agents?" \
+  --data data/real_papers.json \
+  --json
+```
+
+Optional metadata CSV (`filename,paper_id,title,year,language,venue,authors,keywords`) can improve record quality:
+
+```bash
+python scripts/pdf_to_dataset.py \
+  --pdf-dir data/pdfs \
+  --out data/real_papers.json \
+  --metadata-csv data/paper_metadata.csv
+```
+
+Notes:
+- PDF extraction tries `pypdf` first, then `pdftotext`.
+- Install `pypdf` if needed: `pip install pypdf`.

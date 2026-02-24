@@ -5,9 +5,11 @@ import json
 from pathlib import Path
 
 from research_agent.agent import ResearchPaperAgent
+from research_agent.env import load_dotenv
 
 
 def main() -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(
         description="Autonomous multi-step research-paper agent (Grok-centered)"
     )
@@ -58,4 +60,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
