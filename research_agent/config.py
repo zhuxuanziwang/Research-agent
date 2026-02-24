@@ -8,7 +8,7 @@ from dataclasses import dataclass
 class Settings:
     grok_api_key: str = ""
     grok_base_url: str = "https://api.x.ai/v1/chat/completions"
-    grok_model: str = "grok-2-latest"
+    grok_model: str = "grok-4-1-fast-reasoning"
     top_k: int = 6
     max_iterations: int = 8
     memory_window: int = 12
@@ -23,7 +23,7 @@ class Settings:
             grok_base_url=os.getenv(
                 "GROK_BASE_URL", "https://api.x.ai/v1/chat/completions"
             ).strip(),
-            grok_model=os.getenv("GROK_MODEL", "grok-2-latest").strip(),
+            grok_model=os.getenv("GROK_MODEL", "grok-4-1-fast-reasoning").strip(),
             top_k=int(os.getenv("TOP_K", "6")),
             max_iterations=int(os.getenv("MAX_ITERATIONS", "8")),
             memory_window=int(os.getenv("MEMORY_WINDOW", "12")),

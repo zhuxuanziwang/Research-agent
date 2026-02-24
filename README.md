@@ -48,7 +48,7 @@ tests/
 ```bash
 GROK_API_KEY=your_key
 GROK_BASE_URL=https://api.x.ai/v1/chat/completions
-GROK_MODEL=grok-2-latest
+GROK_MODEL=grok-4-1-fast-reasoning
 ```
 
 2. Run the agent:

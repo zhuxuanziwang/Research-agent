@@ -44,6 +44,8 @@ class GrokClient:
             data=data,
             headers={
                 "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "ResearchAgent/1.0 (+https://github.com/zhuxuanziwang/Research-agent)",
                 "Authorization": f"Bearer {self.settings.grok_api_key}",
             },
         )
@@ -179,4 +181,3 @@ class GrokClient:
         parsed.setdefault("evidence_points", [])
         parsed.setdefault("risks", [])
         return parsed
-
