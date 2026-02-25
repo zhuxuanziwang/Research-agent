@@ -9,6 +9,7 @@ Core capabilities:
 
 - Iterative loop: `plan -> decompose -> tool select -> analyze -> refine/replan -> summarize`
 - Grok-driven planning, reflection, and synthesis
+- Query-intent-aware orchestration profile (`multi_paper_overview` vs `focused_analysis`)
 - Hybrid retrieval (`semantic + keyword`) over structured paper sections
 - Context memory with compression and citation tracking
 - Ambiguity resilience via automatic replanning triggers
@@ -140,3 +141,4 @@ Notes:
 - PDF extraction tries `pypdf` first, then `pdftotext`.
 - Install `pypdf` if needed: `pip install pypdf`.
 - For the UI/API, `execution_trace` is compact by default. Full raw observations are only returned when `include_full_trace=true`.
+- PDF ingest generates collision-resistant `paper_id` values and auto-resolves duplicates.

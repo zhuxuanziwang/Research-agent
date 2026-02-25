@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -321,9 +322,11 @@ def load_metadata_csv(path: str | Path | None) -> dict[str, MetadataRecord]:
 
 
 def _build_paper_id(index: int, stem: str, prefix: str) -> str:
-    match = re.search(r"(\d{2,5})", stem)
-    serial = match.group(1) if match else f"{index + 1:03d}"
-    return f"{prefix}-{serial}"
+    serial = f"{index + 1:03d}"
+    normalized = re.sub(r"[^A-Za-z0-9]+", "", stem).upper()
+    token = normalized[:8] if normalized else "DOC"
+    digest = hashlib.sha1(stem.encode("utf-8")).hexdigest()[:6]
+    return f"{prefix}-{serial}-{token}-{digest}"
 
 
 def convert_pdf_to_record(
@@ -377,6 +380,8 @@ def convert_pdf_dir_to_dataset(
     pdf_files = sorted(source.glob("*.pdf"))
     records: list[dict[str, Any]] = []
     skipped: list[str] = []
+    id_collisions_resolved: list[dict[str, str]] = []
+    used_ids: dict[str, int] = {}
 
     for index, pdf_path in enumerate(pdf_files):
         metadata = metadata_map.get(pdf_path.name)
@@ -389,6 +394,20 @@ def convert_pdf_dir_to_dataset(
         if record is None:
             skipped.append(pdf_path.name)
             continue
+
+        base_id = str(record["paper_id"])
+        count = used_ids.get(base_id, 0)
+        if count > 0:
+            resolved = f"{base_id}-DUP{count + 1}"
+            id_collisions_resolved.append(
+                {
+                    "filename": pdf_path.name,
+                    "original": base_id,
+                    "resolved": resolved,
+                }
+            )
+            record["paper_id"] = resolved
+        used_ids[base_id] = count + 1
         records.append(record)
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -396,7 +415,8 @@ def convert_pdf_dir_to_dataset(
     return {
         "pdf_count": len(pdf_files),
         "record_count": len(records),
+        "unique_paper_id_count": len({record["paper_id"] for record in records}),
+        "id_collisions_resolved": id_collisions_resolved,
         "skipped": skipped,
         "output": str(destination),
     }
-

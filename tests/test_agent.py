@@ -8,7 +8,13 @@ from research_agent.config import Settings
 
 
 class StubGrokClient:
-    def plan(self, query: str, memory: str, tools: list[dict[str, str]]) -> dict:
+    def plan(
+        self,
+        query: str,
+        memory: str,
+        tools: list[dict[str, str]],
+        orchestration_profile: dict | None = None,
+    ) -> dict:
         return {
             "objective": query,
             "steps": [
@@ -52,4 +58,3 @@ class AgentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

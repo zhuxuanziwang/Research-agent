@@ -31,6 +31,51 @@ class ResearchPaperAgent:
         self.grok = grok_client or GrokClient(self.settings)
         self.last_primary_paper: str | None = None
 
+    def _infer_query_intent(self, query: str) -> str:
+        low = query.lower()
+        multi_markers = (
+            "these papers",
+            "these paper",
+            "what are these papers",
+            "what are these paper",
+            "what's these paper",
+            "each paper",
+            "paper by paper",
+            "这几篇",
+            "每篇",
+            "分别",
+        )
+        if any(marker in low for marker in multi_markers):
+            return "multi_paper_overview"
+        return "focused_analysis"
+
+    def _build_orchestration_profile(self, query: str) -> dict[str, Any]:
+        intent = self._infer_query_intent(query)
+        paper_catalog = [
+            {
+                "paper_id": paper.paper_id,
+                "title": paper.title,
+                "year": paper.year,
+            }
+            for paper in self.papers
+        ]
+        return {
+            "intent": intent,
+            "available_sections": ["abstract", "methodology", "findings", "limitations"],
+            "paper_catalog": paper_catalog,
+            "guidance": {
+                "multi_paper_overview": [
+                    "summarize each paper separately before cross-paper synthesis",
+                    "avoid asking for sections that do not exist in available_sections",
+                    "prioritize broad coverage across distinct paper_id values",
+                ],
+                "focused_analysis": [
+                    "go deeper on one focal paper while checking contradictory evidence",
+                    "use citation_graph only when paper_id is explicit or auto-selected",
+                ],
+            },
+        }
+
     def _compact_observation(self, observation: dict[str, Any]) -> dict[str, Any]:
         summary: dict[str, Any] = {
             "tool": observation.get("tool"),
@@ -68,8 +113,10 @@ class ResearchPaperAgent:
             args["query"] = step["sub_question"]
         args.setdefault("top_k", self.settings.top_k)
 
-        if tool == "citation_graph" and args.get("paper_id") == "auto":
-            args["paper_id"] = self.last_primary_paper or self.papers[0].paper_id
+        if tool == "citation_graph":
+            paper_id = args.get("paper_id")
+            if paper_id in (None, "", "auto"):
+                args["paper_id"] = self.last_primary_paper or self.papers[0].paper_id
 
         observation = self.tools.run(tool, **args)
         hits = observation.get("hits", [])
@@ -87,11 +134,13 @@ class ResearchPaperAgent:
             if progress_callback is not None:
                 progress_callback(event)
 
+        orchestration_profile = self._build_orchestration_profile(query)
         emit({"stage": "planning"})
         plan = self.grok.plan(
             query=query,
             memory=self.memory.snapshot(),
             tools=self.tools.describe(),
+            orchestration_profile=orchestration_profile,
         )
         steps = list(plan.get("steps", []))
         emit(

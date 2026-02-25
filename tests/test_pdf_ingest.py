@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from research_agent.pdf_ingest import infer_language, split_sections
+from research_agent.pdf_ingest import _build_paper_id, infer_language, split_sections
 
 
 class PdfIngestTests(unittest.TestCase):
@@ -31,7 +31,13 @@ The benchmark has limited coverage for low-resource languages.
         self.assertEqual(infer_language("Este estudio presenta resultados en salud pública."), "es")
         self.assertEqual(infer_language("This paper evaluates long-context retrieval."), "en")
 
+    def test_generated_paper_id_is_collision_resistant(self) -> None:
+        one = _build_paper_id(0, "ACL 26 LoRA submission", "REAL")
+        two = _build_paper_id(1, "ACL 26 LoRA submission", "REAL")
+        three = _build_paper_id(0, "ICME 2025 CaTeR", "REAL")
+        self.assertNotEqual(one, two)
+        self.assertNotEqual(one, three)
+
 
 if __name__ == "__main__":
     unittest.main()
-

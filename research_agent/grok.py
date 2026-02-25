@@ -71,11 +71,20 @@ class GrokClient:
             raise RuntimeError("Grok API response missing message content.")
         return content
 
-    def plan(self, query: str, memory: str, tools: list[dict[str, str]]) -> dict[str, Any]:
+    def plan(
+        self,
+        query: str,
+        memory: str,
+        tools: list[dict[str, str]],
+        orchestration_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        orchestration_profile = orchestration_profile or {}
+        intent = orchestration_profile.get("intent", "focused_analysis")
         prompt = {
             "query": query,
             "memory": memory,
             "tools": tools,
+            "orchestration_profile": orchestration_profile,
             "schema": {
                 "objective": "string",
                 "steps": [
@@ -91,8 +100,19 @@ class GrokClient:
                 "use 3-8 steps",
                 "prefer hybrid_search for evidence",
                 "must include at least one step to resolve ambiguities",
+                "only request sections present in orchestration_profile.available_sections",
+                "if tool is citation_graph, set tool_args.paper_id explicitly or use 'auto'",
+                "avoid repeating near-duplicate steps",
             ],
         }
+        if intent == "multi_paper_overview":
+            prompt["rules"].extend(
+                [
+                    "must include at least one step that enumerates all distinct papers",
+                    "must include one step to produce per-paper summary before cross-paper synthesis",
+                    "avoid TOC-only or intro-only extraction focus",
+                ]
+            )
 
         content = self._chat(
             [
