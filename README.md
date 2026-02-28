@@ -86,6 +86,46 @@ python -m research_agent.server --host 127.0.0.1 --port 8787
 Open `http://127.0.0.1:8787`.
 The CLI and web server automatically load variables from `.env` if present.
 
+## Run Frontend
+
+From project root:
+
+```bash
+cd /Users/zhuxuanziwang/Research-agent
+git pull
+```
+
+Prepare `.env`:
+
+```bash
+GROK_API_KEY=your_key
+GROK_BASE_URL=https://api.x.ai/v1/chat/completions
+GROK_MODEL=grok-4-1-fast-reasoning
+```
+
+Start server (serves both API + frontend):
+
+```bash
+python -m research_agent.server --host 127.0.0.1 --port 8787 --data data/real_papers.json
+```
+
+Open browser:
+
+```text
+http://127.0.0.1:8787
+```
+
+Recommended first run:
+
+1. In `PDF Ingest`, set `PDF Directory` to `data/pdfs`, click `Build Real Dataset`.
+2. In `Run Agent`, set query (for example: `what's these paper talking about`), keep `Dataset Path` as `data/real_papers.json`.
+3. Click `Run Workflow` and watch realtime status/steps.
+
+Common issues:
+
+- `Model not found: grok-2-latest`: restart server after updating `.env` to `grok-4-1-fast-reasoning`.
+- `error code: 1010`: pull latest code (`git pull`) and restart server (request headers fix is included).
+
 ## Realtime Run Status
 
 The web UI uses async run APIs for live progress:
